@@ -1,0 +1,188 @@
+import os
+import sys
+from tempfile import NamedTemporaryFile
+from urllib.request import urlopen
+from urllib.parse import unquote, urlparse
+from urllib.error import HTTPError
+from zipfile import ZipFile
+import tarfile
+import shutil
+
+CHUNK_SIZE = 40960
+DATA_SOURCE_MAPPING = 'pose-estimation:https%3A%2F%2Fstorage.googleapis.com%2Fkaggle-data-sets%2F3240557%2F6230590%2Fbundle%2Farchive.zip%3FX-Goog-Algorithm%3DGOOG4-RSA-SHA256%26X-Goog-Credential%3Dgcp-kaggle-com%2540kaggle-161607.iam.gserviceaccount.com%252F20240724%252Fauto%252Fstorage%252Fgoog4_request%26X-Goog-Date%3D20240724T102059Z%26X-Goog-Expires%3D259200%26X-Goog-SignedHeaders%3Dhost%26X-Goog-Signature%3D2079b6b5a62dde1a62c7e0f1f9b1b368853d8402f9e21cca1b71148c8e3abcb58ba8e8a3488c9276309bba172317cab20512b284de9a20954ef94e1c5ccf69ba981f996ee9effeec9521793172cb191639d526c5ac34c9156d381adac4f4ddd9488359472b9230b863b0c7f80f1e853beb9347e59396bdda99cc2818495829f8d53ab296b11ee693a8b6f314bbde20403652a9ce41baeb3ae19730bdd95f18aac12d392d0092f5ff334d2ef63c606b71f023dbd312d950cfea37f6278c13f9ae6c7baba58cc8bccf719659dfd218ced020052a47f07a739d7d13241ab7ed64f10edbfad6de397e514641b18dde020b451aad4486c4ebe5086bc4f1904448b480'
+
+KAGGLE_INPUT_PATH='/kaggle/input'
+KAGGLE_WORKING_PATH='/kaggle/working'
+KAGGLE_SYMLINK='kaggle'
+
+!umount /kaggle/input/ 2> /dev/null
+shutil.rmtree('/kaggle/input', ignore_errors=True)
+os.makedirs(KAGGLE_INPUT_PATH, 0o777, exist_ok=True)
+os.makedirs(KAGGLE_WORKING_PATH, 0o777, exist_ok=True)
+
+try:
+  os.symlink(KAGGLE_INPUT_PATH, os.path.join("..", 'input'), target_is_directory=True)
+except FileExistsError:
+  pass
+try:
+  os.symlink(KAGGLE_WORKING_PATH, os.path.join("..", 'working'), target_is_directory=True)
+except FileExistsError:
+  pass
+
+for data_source_mapping in DATA_SOURCE_MAPPING.split(','):
+    directory, download_url_encoded = data_source_mapping.split(':')
+    download_url = unquote(download_url_encoded)
+    filename = urlparse(download_url).path
+    destination_path = os.path.join(KAGGLE_INPUT_PATH, directory)
+    try:
+        with urlopen(download_url) as fileres, NamedTemporaryFile() as tfile:
+            total_length = fileres.headers['content-length']
+            print(f'Downloading {directory}, {total_length} bytes compressed')
+            dl = 0
+            data = fileres.read(CHUNK_SIZE)
+            while len(data) > 0:
+                dl += len(data)
+                tfile.write(data)
+                done = int(50 * dl / int(total_length))
+                sys.stdout.write(f"\r[{'=' * done}{' ' * (50-done)}] {dl} bytes downloaded")
+                sys.stdout.flush()
+                data = fileres.read(CHUNK_SIZE)
+            if filename.endswith('.zip'):
+              with ZipFile(tfile) as zfile:
+                zfile.extractall(destination_path)
+            else:
+              with tarfile.open(tfile.name) as tarfile:
+                tarfile.extractall(destination_path)
+            print(f'\nDownloaded and uncompressed: {directory}')
+    except HTTPError as e:
+        print(f'Failed to load (likely expired) {download_url} to path {destination_path}')
+        continue
+    except OSError as e:
+        print(f'Failed to load {download_url} to path {destination_path}')
+        continue
+
+print('Data source import complete.')
+
+
+
+# This Python 3 environment comes with many helpful analytics libraries installed
+# It is defined by the kaggle/python Docker image: https://github.com/kaggle/docker-python
+# For example, here's several helpful packages to load
+
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+
+# Input data files are available in the read-only "../input/" directory
+# For example, running this (by clicking run or pressing Shift+Enter) will list all files under the input directory
+
+import os
+for dirname, _, filenames in os.walk('/kaggle/input'):
+    for filename in filenames:
+        print(os.path.join(dirname, filename))
+
+# You can write up to 20GB to the current directory (/kaggle/working/) that gets preserved as output when you create a version using "Save & Run All" 
+# You can also write temporary files to /kaggle/temp/, but they won't be saved outside of the current session
+
+
+
+pip install mediapipe
+
+
+import math
+import cv2
+import numpy as np
+from time import time
+import mediapipe as mp
+import matplotlib.pyplot as plt
+
+
+'''
+0 - nose 1 - left eye (inner) 2 - left eye 3 - left eye (outer) 4 - right eye (inner) 5 - right eye 6 - right eye (outer) 7 - left ear 8 - right ear 9 - mouth (left) 10 - mouth (right) 11 - left shoulder 12 - right shoulder 13 - left elbow 14 - right elbow 15 - left wrist 16 - right wrist 17 - left pinky 18 - right pinky 19 - left index 20 - right index 21 - left thumb 22 - right thumb 23 - left hip 24 - right hip 25 - left knee 26 - right knee 27 - left ankle 28 - right ankle 29 - left heel 30 - right heel 31 - left foot index 32 - right foot index
+
+
+'''
+
+
+mp_pose = mp.solutions.pose
+pose = mp_pose.Pose(static_image_mode = True, min_detection_confidence=0.3, model_complexity=2)
+mp_drawing = mp.solutions.drawing_utils
+
+
+sample_img = cv2.imread('//kaggle/input/pose-estimation/PoseEstimation/PE/20.jpg')
+plt.figure(figsize=(10,10))
+plt.title('Sample Image');plt.axis('off');plt.imshow(sample_img[:,:,::-1]);plt.show()
+
+
+results = pose.process(cv2.cvtColor(sample_img, cv2.COLOR_BGR2RGB))
+
+if results.pose_landmarks:
+  for i in range(0,32):
+    print(f'{mp_pose.PoseLandmark(i).name}:\n{results.pose_landmarks.landmark[mp_pose.PoseLandmark(i).value]}')
+
+
+'''
+Z Axis is telling about the depth of the image by which the pixels are having the difference from the image when we move it futher from the camera
+
+All Axis are normalized
+
+Visibilty shows the possibility of landmark being visible in the image
+
+'''
+
+image_height, image_width, _ = sample_img.shape
+
+if results.pose_landmarks:
+  for i in range(20,32):
+    print(f'{mp_pose.PoseLandmark(i).name}: ')
+    print(f'x: {results.pose_landmarks.landmark[mp_pose.PoseLandmark(i).value].x * image_width}')
+    print(f'y: {results.pose_landmarks.landmark[mp_pose.PoseLandmark(i).value].y * image_height}')
+    print(f'z: {results.pose_landmarks.landmark[mp_pose.PoseLandmark(i).value].z * image_width}')
+    print(f'visibility: {results.pose_landmarks.landmark[mp_pose.PoseLandmark(i).value].visibility}\n')
+
+
+'''
+Converted Selected Normalized Landmarks displayed above into their original scale by using the width and height of the image
+
+'''
+
+def detect_pose(image,pose,display=True):
+
+  output_image=image.copy()
+  imageRGB=cv2.cvtColor(image,cv2.COLOR_BGR2RGB)
+  results=pose.process(imageRGB)
+  height,width, _ = image.shape
+  landmarks = []
+  if results.pose_landmarks:
+    mp_drawing.draw_landmarks(image=output_image,
+                              landmark_list=results.pose_landmarks,
+                              connections=mp_pose.POSE_CONNECTIONS)
+
+    for landmark in results.pose_landmarks.landmark:
+      landmarks.append((int(landmark.x * width),int(landmark.y * height),
+                       (landmark.z * width)))
+
+    if display:
+        plt.figure(figsize=[22,22])
+
+        plt.subplot(121)
+        plt.imshow(image[:,:,::-1])
+        plt.title('Original Image')
+        plt.axis('off')
+
+        plt.subplot(122)
+        plt.imshow(output_image[:,:,::-1])
+        plt.title('Output Image')
+        plt.axis('off')
+
+        mp_drawing.plot_landmarks(results.pose_world_landmarks,mp_pose.POSE_CONNECTIONS)
+
+    else:
+        return output_image,landmarks
+
+
+
+image = cv2.imread('/kaggle/input/pose-estimation/PoseEstimation/PE/6.jpg')
+detect_pose(image, pose,display=True)
+
+
+
